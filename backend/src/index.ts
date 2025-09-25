@@ -2,24 +2,31 @@ import express from 'express';
 import { Pool } from 'pg';
 import amqp from 'amqplib';
 
+const envs = ['dev', 'staging', 'prod'];
+
 const app = express();
 const port = process.env.PORT;
 
-const pool = new Pool({
-  user: process.env.POSTGRES_USER,
-  host: 'postgres',
-  database: process.env.POSTGRES_DB,
-  password: process.env.POSTGRES_PASSWORD,
-  port: 5432,
-});
+const PG_URIS = envs.map(
+  (env) => process.env[`POSTGRES_URI_${env.toUpperCase()}`]
+);
+
+const pools = PG_URIS.reduce((acc, uri, index) => {
+  acc[envs[index]] = new Pool({ connectionString: uri });
+  return acc;
+}, {} as { [key: string]: Pool });
 
 app.get('/', (req, res) => {
   res.send({ message: 'Hello from the backend!' });
 });
 
-app.get('/db', async (req, res) => {
+app.post('/:env/db', async (req, res) => {
   try {
-    const client = await pool.connect();
+    const env = req.params.env;
+    if (!envs.includes(env)) {
+      return res.status(400).send('Invalid environment');
+    }
+    const client = await pools[env].connect();
     const result = await client.query('SELECT NOW()');
     res.send(result.rows[0]);
     client.release();
@@ -29,18 +36,23 @@ app.get('/db', async (req, res) => {
   }
 });
 
-app.get('/rabbitmq', async (req, res) => {
+app.post('/:env/rabbitmq', async (req, res) => {
   try {
-    const connection = await amqp.connect({
-      protocol: 'amqp',
-      hostname: 'rabbitmq',
-      port: 5672,
-      username: process.env.RABBITMQ_DEFAULT_USER,
-      password: process.env.RABBITMQ_DEFAULT_PASS,
-    });
+    const env = req.params.env;
+    if (!envs.includes(env)) {
+      return res.status(400).send('Invalid environment');
+    }
+    const connection = await amqp.connect(
+      process.env[`RABBITMQ_URI_${env.toUpperCase()}`] || ''
+    );
     const channel = await connection.createChannel();
-    const queue = 'hello';
-    const msg = 'Hello World!';
+
+    const { queue, msg } = req.query as { queue?: string; msg?: string };
+    if (!queue || !msg) {
+      return res
+        .status(400)
+        .send('Queue and msg query parameters are required');
+    }
 
     await channel.assertQueue(queue, { durable: false });
     channel.sendToQueue(queue, Buffer.from(msg));
