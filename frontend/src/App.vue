@@ -1,7 +1,22 @@
 <template>
   <div class="min-h-screen bg-gray-100 text-gray-800">
     <div class="container mx-auto p-4">
-      <h1 class="text-3xl font-bold mb-4">Dashboard</h1>
+      <div class="flex justify-between items-center mb-4">
+        <h1 class="text-3xl font-bold">Dashboard</h1>
+        <div class="flex items-center gap-2">
+          <div class="text-sm text-gray-600">
+            Environment:
+            <span class="font-semibold text-blue-600">{{ activeEnv }}</span>
+          </div>
+          <button
+            class="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 disabled:opacity-50 text-sm"
+            :disabled="loading"
+            @click="fetchData"
+          >
+            {{ loading ? 'Loading...' : 'Refresh' }}
+          </button>
+        </div>
+      </div>
 
       <div class="flex border-b">
         <button
@@ -12,14 +27,49 @@
             'border-b-2 border-blue-500 text-blue-600': activeEnv === env,
             'text-gray-500': activeEnv !== env,
           }"
-          @click="activeEnv = env"
+          @click="updateEnvAndHash(env)"
         >
           {{ env.charAt(0).toUpperCase() + env.slice(1) }}
         </button>
       </div>
 
       <div class="mt-4">
-        <div v-if="loading" class="text-center">Loading...</div>
+        <div v-if="loading" class="text-center py-8">
+          <div
+            class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mb-2"
+          ></div>
+          <div>Loading data for {{ activeEnv }}...</div>
+        </div>
+        <div
+          v-else-if="pgData === 'Error fetching data'"
+          class="text-center py-8 text-red-600"
+        >
+          <div class="text-xl font-semibold mb-2">Error Loading Data</div>
+          <div class="mb-4">
+            Failed to load data for {{ activeEnv }} environment
+          </div>
+          <button
+            class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            @click="fetchData"
+          >
+            Retry
+          </button>
+        </div>
+        <div
+          v-else-if="!pgData || pgData.length === 0"
+          class="text-center py-8 text-gray-600"
+        >
+          <div class="text-xl font-semibold mb-2">No Data Available</div>
+          <div class="mb-4">
+            No companies found in {{ activeEnv }} environment
+          </div>
+          <button
+            class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            @click="fetchData"
+          >
+            Refresh
+          </button>
+        </div>
         <div v-else>
           <div class="bg-white p-4 rounded shadow mb-4">
             <h2 class="text-xl font-semibold mb-2">PostgreSQL Data</h2>
@@ -49,6 +99,7 @@
                     <th class="px-2 py-1 text-left">Hostnames</th>
                     <th class="px-2 py-1 text-left">Deployment Status</th>
                     <th class="px-2 py-1 text-left">Last full deployment</th>
+                    <th class="px-2 py-1 text-left">Builds</th>
                     <th class="px-2 py-1 text-left">Release</th>
                     <th class="px-2 py-1 text-left">Edit</th>
                   </tr>
@@ -70,7 +121,7 @@
                           config.deployment_statuses?.[0].deployment_status !==
                           'RELEASED'
                         "
-                        class="ml-2 bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600"
+                        class="ml-2 bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600 text-xs"
                         @click="forceReleased(config.id)"
                       >
                         Force Release
@@ -85,10 +136,16 @@
                           : 'N/A'
                       }}
                     </td>
+                    <td class="px-2 py-1">
+                      {{
+                        config.deployment_statuses?.[0].public_config_build ||
+                        'N/A'
+                      }}
+                    </td>
                     <td class="px-2 py-1 flex gap-2">
                       <button
                         v-for="action in ['full', 'embedded', 'widget', 'ask']"
-                        class="bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-500"
+                        class="bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-500 text-xs"
                         @click="handleAction(config.id, action)"
                       >
                         {{ action.charAt(0).toUpperCase() + action.slice(1) }}
@@ -97,8 +154,8 @@
 
                     <td class="px-2 py-1">
                       <button
-                        class="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-600"
-                        @click="openEditModal(config.id, item.id, item.name)"
+                        class="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-600 text-xs"
+                        @click="openEditModal(config.id)"
                       >
                         Edit
                       </button>
@@ -157,6 +214,21 @@ const loading = ref(false);
 const pgData = ref<any | null>(null);
 const toast = useToast();
 
+// URL hash environment handling
+const getEnvFromHash = (): Env => {
+  const hash = window.location.hash.slice(1); // Remove #
+  const params = new URLSearchParams(hash);
+  const envFromHash = params.get('env') as Env;
+  return envs.includes(envFromHash) ? envFromHash : 'dev';
+};
+
+const updateHashWithEnv = (env: Env) => {
+  const hash = window.location.hash.slice(1);
+  const params = new URLSearchParams(hash);
+  params.set('env', env);
+  window.location.hash = params.toString();
+};
+
 const fetchData = async () => {
   loading.value = true;
   pgData.value = null;
@@ -172,6 +244,28 @@ const fetchData = async () => {
   } finally {
     loading.value = false;
   }
+};
+
+// Initialize environment from URL hash on load
+const initializeEnv = () => {
+  const envFromHash = getEnvFromHash();
+  activeEnv.value = envFromHash;
+  // Trigger initial data load
+  fetchData();
+};
+
+// Watch for hash changes to update environment
+const handleHashChange = () => {
+  const envFromHash = getEnvFromHash();
+  if (envFromHash !== activeEnv.value) {
+    activeEnv.value = envFromHash;
+  }
+};
+
+// Update hash when activeEnv changes
+const updateEnvAndHash = (newEnv: Env) => {
+  activeEnv.value = newEnv;
+  updateHashWithEnv(newEnv);
 };
 
 const sendRabbitMQMessage = async (msg: string, queue: string) => {
@@ -280,6 +374,13 @@ const handleSave = async () => {
 };
 
 onMounted(() => {
+  // Initialize environment from URL hash
+  initializeEnv();
+
+  // Add hash change listener
+  window.addEventListener('hashchange', handleHashChange);
+
+  // Add escape key listener for modal
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && showEditModal.value) {
       showEditModal.value = false;
@@ -287,7 +388,7 @@ onMounted(() => {
   });
 });
 
-watch(activeEnv, fetchData, { immediate: true });
+watch(activeEnv, fetchData);
 </script>
 
 <style scoped></style>

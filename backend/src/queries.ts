@@ -1,7 +1,7 @@
 const ids = {
   dev: [4],
   staging: [298],
-  prod: [247, 185, 393, 367, 415, 387, 431, 491, 463, 507, 421],
+  prod: [247, 185, 393, 367, 415, 387, 431, 491, 463, 507, 421, 527],
 } as { [key: string]: number[] };
 
 export const getEnrichedCompanies = (env: string) => `
