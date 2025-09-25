@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  postgres:
+    env_file:
+      - ./.env_DEV
+  rabbitmq:
+    env_file:
+      - ./.env_DEV
+  backend:
+    env_file:
+      - ./.env_DEV
