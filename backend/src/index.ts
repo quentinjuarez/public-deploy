@@ -1,18 +1,27 @@
 import express from 'express';
 import { Pool } from 'pg';
 import amqp from 'amqplib';
+import cors from 'cors';
 
+const port = process.env.PORT;
 const envs = ['dev', 'staging', 'prod'];
 
 const app = express();
-const port = process.env.PORT;
+app.use(
+  cors({
+    origin: '*',
+  })
+);
 
 const PG_URIS = envs.map(
   (env) => process.env[`POSTGRES_URI_${env.toUpperCase()}`]
 );
 
 const pools = PG_URIS.reduce((acc, uri, index) => {
-  acc[envs[index]] = new Pool({ connectionString: uri });
+  acc[envs[index]] = new Pool({
+    connectionString: uri,
+    ssl: { rejectUnauthorized: false },
+  });
   return acc;
 }, {} as { [key: string]: Pool });
 
