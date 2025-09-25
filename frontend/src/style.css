@@ -1,1 +1,26 @@
 @import 'tailwindcss';
+
+/* Custom toast styles */
+.Vue-Toastification__toast {
+  @apply rounded-lg shadow-lg;
+}
+
+.Vue-Toastification__toast--success {
+  @apply bg-green-500 text-white;
+}
+
+.Vue-Toastification__toast--error {
+  @apply bg-red-500 text-white;
+}
+
+.Vue-Toastification__toast--info {
+  @apply bg-blue-500 text-white;
+}
+
+.Vue-Toastification__toast--warning {
+  @apply bg-yellow-500 text-white;
+}
+
+.Vue-Toastification__progress-bar {
+  @apply bg-white/50;
+}

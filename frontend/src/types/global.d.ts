@@ -1,9 +1,9 @@
 export {};
 
 declare global {
-  namespace NodeJS {
-    interface ProcessEnv {
+  const process: {
+    env: {
       BACKEND_URL: string;
-    }
-  }
+    };
+  };
 }

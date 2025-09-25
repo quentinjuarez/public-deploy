@@ -23,64 +23,147 @@
         <div v-else>
           <div class="bg-white p-4 rounded shadow mb-4">
             <h2 class="text-xl font-semibold mb-2">PostgreSQL Data</h2>
-            <pre class="bg-gray-200 p-2 rounded">{{ pgData }}</pre>
-          </div>
-
-          <div class="bg-white p-4 rounded shadow">
-            <h2 class="text-xl font-semibold mb-2">Send RabbitMQ Message</h2>
-            <div class="flex gap-2">
-              <input
-                v-model="rabbitmq.queue"
-                type="text"
-                placeholder="Queue"
-                class="p-2 border rounded w-full"
-              />
-              <input
-                v-model="rabbitmq.msg"
-                type="text"
-                placeholder="Message"
-                class="p-2 border rounded w-full"
-              />
-              <button
-                @click="sendRabbitMQMessage"
-                class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            <div
+              v-for="(item, index) in pgData"
+              :key="index"
+              class="mb-2 w-full text-left"
+            >
+              <div
+                class="bg-gray-100 p-2 rounded overflow-x-auto flex gap-2 items-center"
               >
-                Send
-              </button>
+                <img
+                  :src="item.logo"
+                  alt=""
+                  class="w-32 h-16 object-cover rounded object-center"
+                />
+
+                <div class="mt-2">
+                  <p><strong>ID:</strong> {{ item.id }}</p>
+                  <p><strong>Name:</strong> {{ item.name }}</p>
+                </div>
+              </div>
+
+              <table class="min-w-full bg-gray-50 rounded mb-2">
+                <thead>
+                  <tr>
+                    <th class="px-2 py-1 text-left">Hostnames</th>
+                    <th class="px-2 py-1 text-left">Deployment Status</th>
+                    <th class="px-2 py-1 text-left">Last full deployment</th>
+                    <th class="px-2 py-1 text-left">Release</th>
+                    <th class="px-2 py-1 text-left">Edit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(config, idx) in item.public_configs" :key="idx">
+                    <td class="px-2 py-1">
+                      {{
+                        config.hostnames
+                          ?.map((h: any) => h.hostname)
+                          .join(', ') || 'N/A'
+                      }}
+                    </td>
+                    <td class="px-2 py-1">
+                      {{ config.deployment_statuses?.[0].deployment_status }}
+
+                      <button
+                        v-if="
+                          config.deployment_statuses?.[0].deployment_status !==
+                          'RELEASED'
+                        "
+                        class="ml-2 bg-green-500 text-white px-2 py-1 rounded hover:bg-green-600"
+                        @click="forceReleased(config.id)"
+                      >
+                        Force Release
+                      </button>
+                    </td>
+                    <td class="px-2 py-1">
+                      {{
+                        config.deployment_statuses?.[0].updated_at
+                          ? new Date(
+                              config.deployment_statuses?.[0].updated_at
+                            ).toLocaleString('fr-FR')
+                          : 'N/A'
+                      }}
+                    </td>
+                    <td class="px-2 py-1 flex gap-2">
+                      <button
+                        v-for="action in ['full', 'embedded', 'widget', 'ask']"
+                        class="bg-blue-500 text-white px-2 py-1 rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-500"
+                        @click="handleAction(config.id, action)"
+                      >
+                        {{ action.charAt(0).toUpperCase() + action.slice(1) }}
+                      </button>
+                    </td>
+
+                    <td class="px-2 py-1">
+                      <button
+                        class="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-600"
+                        @click="openEditModal(config.id, item.id, item.name)"
+                      >
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
-            <p v-if="rabbitmq.response" class="mt-2 text-green-500">
-              {{ rabbitmq.response }}
-            </p>
           </div>
         </div>
+      </div>
+    </div>
+    <!-- Edit Modal -->
+    <div
+      v-if="showEditModal"
+      class="fixed inset-0 bg-black/50 flex items-center justify-center"
+      @mousedown.self="showEditModal = false"
+    >
+      <div class="bg-white p-6 rounded shadow-lg w-1/2">
+        <h2 class="text-2xl font-bold mb-4">Edit Configuration</h2>
+
+        <textarea
+          v-if="focusConfig"
+          class="w-full h-[20vh] p-2 border rounded mb-4 font-mono text-sm"
+          v-model="uiConfig"
+        >
+        </textarea>
+
+        <textarea
+          v-if="focusConfig"
+          class="w-full h-[50vh] p-2 border rounded mb-4 font-mono text-sm"
+          v-model="buildConfig"
+        >
+        </textarea>
+
+        <button
+          class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+          @click="handleSave"
+        >
+          Save
+        </button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useToast } from 'vue-toastification';
 
 type Env = 'dev' | 'staging' | 'prod';
 
 const envs: Env[] = ['dev', 'staging', 'prod'];
 const activeEnv = ref<Env>('dev');
 const loading = ref(false);
-const pgData = ref<string | null>(null);
-const rabbitmq = ref({
-  queue: '',
-  msg: '',
-  response: '',
-});
+const pgData = ref<any | null>(null);
+const toast = useToast();
 
 const fetchData = async () => {
   loading.value = true;
   pgData.value = null;
-  rabbitmq.value.response = '';
   try {
     const res = await fetch(
-      `${process.env.BACKEND_URL}/${activeEnv.value}/db`,
-      { method: 'POST' }
+      `${process.env.BACKEND_URL}/${activeEnv.value}/companies`,
+      { method: 'GET' }
     );
     pgData.value = await res.json();
   } catch (err) {
@@ -91,19 +174,118 @@ const fetchData = async () => {
   }
 };
 
-const sendRabbitMQMessage = async () => {
+const sendRabbitMQMessage = async (msg: string, queue: string) => {
   try {
-    const { queue, msg } = rabbitmq.value;
-    const res = await fetch(
-      `${process.env.BACKEND_URL}/${activeEnv.value}/rabbitmq?queue=${queue}&msg=${msg}`,
-      { method: 'POST' }
+    const response = await fetch(
+      `${process.env.BACKEND_URL}/${activeEnv.value}/rabbitmq`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ msg, queue }),
+      }
     );
-    rabbitmq.value.response = await res.text();
+
+    if (response.ok) {
+      toast.success(`RabbitMQ message sent successfully to queue: ${queue}`);
+    } else {
+      toast.error('Failed to send RabbitMQ message');
+    }
   } catch (err) {
     console.error(err);
-    rabbitmq.value.response = 'Error sending message';
+    toast.error('Error sending RabbitMQ message');
   }
 };
+
+const handleAction = (configId: number, action: string) => {
+  const msg = {
+    company_public_config_id: configId,
+    deployment_id: `build_${new Date().getTime()}`,
+    deployment_type: action,
+  };
+  const queue =
+    action === 'full' ? 'selfcare-build' : 'selfcare-embedded-build';
+  sendRabbitMQMessage(JSON.stringify(msg), queue);
+  toast.info(`Initiated ${action} deployment for config ${configId}`);
+};
+
+const forceReleased = async (companyPublicConfigId: number) => {
+  try {
+    const res = await fetch(
+      `${process.env.BACKEND_URL}/${activeEnv.value}/force-released`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ companyPublicConfigId }),
+      }
+    );
+    const data = await res.json();
+    console.log('Force released response:', data);
+
+    await fetchData();
+  } catch (err) {
+    console.error('Error forcing release:', err);
+  }
+};
+
+// EDIT MODAL
+const showEditModal = ref(false);
+const focusCompanyPublicConfigId = ref<number | null>(null);
+const buildConfig = ref('');
+const uiConfig = ref('');
+
+const openEditModal = (companyPublicConfigId: number) => {
+  focusCompanyPublicConfigId.value = companyPublicConfigId;
+  buildConfig.value = JSON.stringify(focusConfig.value?.build_config, null, 2);
+  uiConfig.value = JSON.stringify(focusConfig.value?.ui_config, null, 2);
+  showEditModal.value = true;
+};
+
+const focusConfig = computed(() => {
+  if (!pgData.value || !focusCompanyPublicConfigId.value) return null;
+
+  for (const company of pgData.value) {
+    const config = company.public_configs.find(
+      (c: any) => c.id === focusCompanyPublicConfigId.value
+    );
+    if (config) return config;
+  }
+  return null;
+});
+
+const handleSave = async () => {
+  if (!focusConfig.value) return;
+
+  try {
+    const res = await fetch(
+      `${process.env.BACKEND_URL}/${activeEnv.value}/update-config`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          companyPublicConfigId: focusCompanyPublicConfigId.value,
+          buildConfig: JSON.parse(buildConfig.value),
+          uiConfig: JSON.parse(uiConfig.value),
+        }),
+      }
+    );
+    const data = await res.json();
+    console.log('Update config response:', data);
+    toast.success('Configuration updated successfully');
+    showEditModal.value = false;
+    await fetchData();
+  } catch (err) {
+    console.error('Error updating config:', err);
+    toast.error('Error updating configuration');
+  }
+};
+
+onMounted(() => {
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && showEditModal.value) {
+      showEditModal.value = false;
+    }
+  });
+});
 
 watch(activeEnv, fetchData, { immediate: true });
 </script>

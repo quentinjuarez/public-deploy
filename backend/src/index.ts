@@ -2,11 +2,13 @@ import express from 'express';
 import { Pool } from 'pg';
 import amqp from 'amqplib';
 import cors from 'cors';
+import { getEnrichedCompanies, forceReleased, updateConfig } from './queries';
 
 const port = process.env.PORT;
 const envs = ['dev', 'staging', 'prod'];
 
 const app = express();
+app.use(express.json());
 app.use(
   cors({
     origin: '*',
@@ -29,15 +31,73 @@ app.get('/', (req, res) => {
   res.send({ message: 'Hello from the backend!' });
 });
 
-app.post('/:env/db', async (req, res) => {
+app.get('/:env/companies', async (req, res) => {
   try {
     const env = req.params.env;
     if (!envs.includes(env)) {
       return res.status(400).send('Invalid environment');
     }
     const client = await pools[env].connect();
-    const result = await client.query('SELECT NOW()');
-    res.send(result.rows[0]);
+    const result = await client.query(getEnrichedCompanies(env));
+    res.send(result.rows);
+    client.release();
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Error connecting to the database');
+  }
+});
+
+app.post('/:env/force-released', async (req, res) => {
+  try {
+    const env = req.params.env;
+    if (!envs.includes(env)) {
+      return res.status(400).send('Invalid environment');
+    }
+
+    const companyPublicConfigId = parseInt(
+      req.body.companyPublicConfigId as string
+    );
+    if (isNaN(companyPublicConfigId)) {
+      return res.status(400).send('Invalid or missing companyPublicConfigId');
+    }
+
+    const client = await pools[env].connect();
+    const result = await client.query(forceReleased(companyPublicConfigId));
+    res.send(result.rows);
+    client.release();
+  } catch (err) {
+    console.error(err);
+    res.status(500).send('Error connecting to the database');
+  }
+});
+
+app.post('/:env/update-config', async (req, res) => {
+  try {
+    const env = req.params.env;
+    if (!envs.includes(env)) {
+      return res.status(400).send('Invalid environment');
+    }
+
+    const companyPublicConfigId = parseInt(
+      req.body.companyPublicConfigId as string
+    );
+    const build_config = req.body.buildConfig;
+    const ui_config = req.body.uiConfig;
+
+    if (isNaN(companyPublicConfigId) || !build_config || !ui_config) {
+      return res
+        .status(400)
+        .send(
+          'Invalid or missing companyPublicConfigId, buildConfig or uiConfig'
+        );
+    }
+
+    const client = await pools[env].connect();
+    const result = await client.query(
+      updateConfig.text,
+      updateConfig.values(companyPublicConfigId, build_config, ui_config)
+    );
+    res.send(result.rows);
     client.release();
   } catch (err) {
     console.error(err);
@@ -56,14 +116,14 @@ app.post('/:env/rabbitmq', async (req, res) => {
     );
     const channel = await connection.createChannel();
 
-    const { queue, msg } = req.query as { queue?: string; msg?: string };
+    const { queue, msg } = req.body as { queue?: string; msg?: string };
     if (!queue || !msg) {
       return res
         .status(400)
         .send('Queue and msg query parameters are required');
     }
 
-    await channel.assertQueue(queue, { durable: false });
+    await channel.assertQueue(queue, { durable: true });
     channel.sendToQueue(queue, Buffer.from(msg));
     res.send('Message sent to RabbitMQ');
     await channel.close();
