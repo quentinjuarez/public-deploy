@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gray-100 text-gray-800">
+  <div class="min-h-screen bg-gray-100 text-gray-900">
     <div class="container mx-auto p-4">
       <div class="flex justify-between items-center mb-4">
         <h1 class="text-3xl font-bold">Dashboard</h1>
@@ -8,6 +8,13 @@
             Environment:
             <span class="font-semibold text-blue-600">{{ activeEnv }}</span>
           </div>
+          <button
+            class="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 disabled:opacity-50 text-sm"
+            :disabled="loading"
+            @click="deployAll"
+          >
+            Deploy All
+          </button>
           <button
             class="bg-blue-500 text-white px-3 py-1 rounded hover:bg-blue-600 disabled:opacity-50 text-sm"
             :disabled="loading"
@@ -106,7 +113,12 @@
                 </thead>
                 <tbody>
                   <tr v-for="(config, idx) in item.public_configs" :key="idx">
-                    <td class="px-2 py-1">
+                    <td
+                      class="px-2 py-1"
+                      :class="{
+                        'text-gray-500': !config.knowledge_id,
+                      }"
+                    >
                       {{
                         config.hostnames
                           ?.map((h: any) => h.hostname)
@@ -191,6 +203,20 @@
         >
         </textarea>
 
+        <input
+          type="text"
+          class="w-full p-2 border rounded mb-4"
+          v-model="focusConfig.knowledge_id"
+          placeholder="Knowledge ID"
+        />
+
+        <input
+          type="text"
+          class="w-full p-2 border rounded mb-4"
+          v-model="focusConfig.embedded_access_key"
+          placeholder="Embedded Access Key"
+        />
+
         <button
           class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
           @click="handleSave"
@@ -268,7 +294,7 @@ const updateEnvAndHash = (newEnv: Env) => {
   updateHashWithEnv(newEnv);
 };
 
-const sendRabbitMQMessage = async (msg: string, queue: string) => {
+const sendRabbitMQMessage = async (msg: any, queue: string) => {
   try {
     const response = await fetch(
       `${process.env.BACKEND_URL}/${activeEnv.value}/rabbitmq`,
@@ -293,12 +319,12 @@ const sendRabbitMQMessage = async (msg: string, queue: string) => {
 const handleAction = (configId: number, action: string) => {
   const msg = {
     company_public_config_id: configId,
-    deployment_id: `build_${new Date().getTime()}`,
+    deployment_id: `[MEP] Gropius`,
     deployment_type: action,
   };
   const queue =
     action === 'full' ? 'selfcare-build' : 'selfcare-embedded-build';
-  sendRabbitMQMessage(JSON.stringify(msg), queue);
+  sendRabbitMQMessage(msg, queue);
   toast.info(`Initiated ${action} deployment for config ${configId}`);
 };
 
@@ -387,6 +413,28 @@ onMounted(() => {
     }
   });
 });
+
+const deployAll = async () => {
+  if (!pgData.value) return;
+
+  const actions = ['full', 'embedded', 'widget', 'ask'];
+
+  const configsWithKnowledgeId = pgData.value
+    .flatMap((company: any) => company.public_configs)
+    .filter((config: any) => config.knowledge_id);
+
+  for (const config of configsWithKnowledgeId) {
+    for (const action of actions) {
+      handleAction(config.id, action);
+      // Adding a small delay to avoid overwhelming the backend
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+  }
+
+  toast.success(
+    `Deployed all configurations for ${configsWithKnowledgeId.length} configs`
+  );
+};
 
 watch(activeEnv, fetchData);
 </script>

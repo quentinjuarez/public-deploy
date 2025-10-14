@@ -1,7 +1,9 @@
 const ids = {
   dev: [4],
   staging: [298],
-  prod: [247, 185, 393, 367, 415, 387, 431, 491, 463, 507, 421, 527],
+  prod: [
+    247, 185, 393, 367, 415, 387, 431, 491, 463, 507, 421, 527, 496, 530, 531,
+  ],
 } as { [key: string]: number[] };
 
 export const getEnrichedCompanies = (env: string) => `
@@ -12,6 +14,8 @@ export const getEnrichedCompanies = (env: string) => `
         'id', conf.id,
         'build_config', conf.build_config,
         'ui_config', conf.ui_config,
+        'knowledge_id', conf.knowledge_id,
+        'embedded_access_key', conf.embedded_access_key,
         'hostnames', (
           SELECT json_agg(h)
           FROM company_public_config_hostnames h

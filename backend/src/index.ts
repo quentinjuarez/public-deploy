@@ -116,7 +116,7 @@ app.post('/:env/rabbitmq', async (req, res) => {
     );
     const channel = await connection.createChannel();
 
-    const { queue, msg } = req.body as { queue?: string; msg?: string };
+    const { queue, msg } = req.body as { queue?: string; msg?: any };
     if (!queue || !msg) {
       return res
         .status(400)
@@ -124,7 +124,7 @@ app.post('/:env/rabbitmq', async (req, res) => {
     }
 
     await channel.assertQueue(queue, { durable: true });
-    channel.sendToQueue(queue, Buffer.from(msg));
+    channel.sendToQueue(queue, Buffer.from(JSON.stringify(msg)));
     res.send('Message sent to RabbitMQ');
     await channel.close();
     await connection.close();
