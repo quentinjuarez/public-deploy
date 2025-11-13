@@ -1,12 +1,33 @@
-const ids = {
-  dev: [4],
-  staging: [298],
-  prod: [
-    247, 185, 393, 367, 415, 387, 431, 491, 463, 507, 421, 527, 496, 530, 531,
-  ],
-} as { [key: string]: number[] };
+const filters = {
+  client: {
+    dev: [4],
+    staging: [298],
+    prod: [
+      247, 185, 393, 367, 415, 387, 431, 491, 463, 507, 421, 527, 496, 530, 531,
+      478, 450, 509, 535, 472, 140, 317, 441, 465, 490, 514, 515, 543,
+    ],
+  },
+  demo: {
+    dev: [],
+    staging: [],
+    prod: [
+      89, 92, 159, 181, 317, 342, 343, 346, 348, 352, 355, 363, 378, 395, 400,
+      406, 408, 413, 421, 444, 449, 451, 470, 474, 475, 486, 519, 537, 548, 341,
+    ],
+  },
+  all: {
+    dev: [],
+    staging: [],
+    prod: [],
+  },
+} as Record<FilterType, { [key: string]: number[] }>;
 
-export const getEnrichedCompanies = (env: string) => `
+type FilterType = 'client' | 'demo' | 'all';
+
+export const getEnrichedCompanies = (
+  env: string,
+  filter: FilterType = 'client'
+) => `
   SELECT
     c.*,
     json_agg(
@@ -30,7 +51,13 @@ export const getEnrichedCompanies = (env: string) => `
     ) AS public_configs
   FROM companies c
   LEFT JOIN company_public_configs conf ON c.id = conf.company_id
-  WHERE c.id = ANY(ARRAY[${ids[env].join(',')}])
+  WHERE c.id = ANY(ARRAY[${filters[filter][env].join(',')}])
+    AND conf.id IS NOT NULL AND conf.knowledge_id != ''
+    AND ( 
+      SELECT COUNT(*)
+      FROM company_public_config_hostnames h
+      WHERE h.company_public_config_id = conf.id
+    ) > 0
   GROUP BY c.id
 `;
 

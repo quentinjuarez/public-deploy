@@ -34,11 +34,14 @@ app.get('/', (req, res) => {
 app.get('/:env/companies', async (req, res) => {
   try {
     const env = req.params.env;
+    const filter = req.query.filter || 'client';
     if (!envs.includes(env)) {
       return res.status(400).send('Invalid environment');
     }
     const client = await pools[env].connect();
-    const result = await client.query(getEnrichedCompanies(env));
+    const result = await client.query(
+      getEnrichedCompanies(env, filter as 'client' | 'demo' | 'all')
+    );
     res.send(result.rows);
     client.release();
   } catch (err) {

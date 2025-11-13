@@ -109,6 +109,7 @@
                     <th class="px-2 py-1 text-left">Builds</th>
                     <th class="px-2 py-1 text-left">Release</th>
                     <th class="px-2 py-1 text-left">Edit</th>
+                    <th class="px-2 py-1 text-left">Widget</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -172,6 +173,15 @@
                         Edit
                       </button>
                     </td>
+
+                    <td class="px-2 py-1">
+                      <button
+                        class="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-600 text-xs"
+                        @click="openWidget(config.id)"
+                      >
+                        Widget
+                      </button>
+                    </td>
                   </tr>
                 </tbody>
               </table>
@@ -225,6 +235,13 @@
         </button>
       </div>
     </div>
+
+    <!-- Widget - Backdrop - Testing -->
+    <div
+      v-if="showWidget"
+      class="fixed inset-0 flex items-center justify-center z-50 bg-black/40"
+      @mousedown.self="closeWidget"
+    ></div>
   </div>
 </template>
 
@@ -260,7 +277,7 @@ const fetchData = async () => {
   pgData.value = null;
   try {
     const res = await fetch(
-      `${process.env.BACKEND_URL}/${activeEnv.value}/companies`,
+      `${process.env.BACKEND_URL}/${activeEnv.value}/companies?filter=all`,
       { method: 'GET' }
     );
     pgData.value = await res.json();
@@ -319,7 +336,7 @@ const sendRabbitMQMessage = async (msg: any, queue: string) => {
 const handleAction = (configId: number, action: string) => {
   const msg = {
     company_public_config_id: configId,
-    deployment_id: `[MEP] Gropius`,
+    deployment_id: `qj-${new Date().getTime()}`,
     deployment_type: action,
   };
   const queue =
@@ -412,6 +429,15 @@ onMounted(() => {
       showEditModal.value = false;
     }
   });
+
+  window.addEventListener('MdSelfcareLoaded', (e: Event) => {
+    const customEvent = e as CustomEvent;
+    window.__MAYDAY_SELFCARE__ = customEvent.detail;
+    // 'init' is a md-selfcare function that init accessKey and locale in the store
+    window.__MAYDAY_SELFCARE__.init({
+      accessKey: focusConfig.value?.embedded_access_key,
+    });
+  });
 });
 
 const deployAll = async () => {
@@ -437,6 +463,27 @@ const deployAll = async () => {
 };
 
 watch(activeEnv, fetchData);
+
+// WIDGET TESTING
+const showWidget = ref(false);
+
+const openWidget = (configId: number) => {
+  focusCompanyPublicConfigId.value = configId;
+
+  const hostname = focusConfig.value?.hostnames?.[0]?.hostname;
+
+  const scriptUrl = `https://${hostname}/widget/md-selfcare.umd.js`;
+
+  const scriptEl = document.createElement('script');
+  scriptEl.setAttribute('src', scriptUrl);
+  document.body.append(scriptEl);
+
+  showWidget.value = true;
+};
+
+const closeWidget = () => {
+  window.location.reload();
+};
 </script>
 
 <style scoped></style>
