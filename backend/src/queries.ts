@@ -1,7 +1,7 @@
 const filters = {
   client: {
     dev: [4],
-    staging: [298],
+    staging: [298, 372],
     prod: [
       247, 185, 393, 367, 415, 387, 431, 491, 463, 507, 421, 527, 496, 530, 531,
       478, 450, 509, 535, 472, 140, 317, 441, 465, 490, 514, 515, 543,
@@ -27,39 +27,47 @@ type FilterType = 'client' | 'demo' | 'all';
 export const getEnrichedCompanies = (
   env: string,
   filter: FilterType = 'client'
-) => `
-  SELECT
-    c.*,
-    json_agg(
-      json_build_object(
-        'id', conf.id,
-        'build_config', conf.build_config,
-        'ui_config', conf.ui_config,
-        'knowledge_id', conf.knowledge_id,
-        'embedded_access_key', conf.embedded_access_key,
-        'hostnames', (
-          SELECT json_agg(h)
-          FROM company_public_config_hostnames h
-          WHERE h.company_public_config_id = conf.id
-        ),
-        'deployment_statuses', (
-          SELECT json_agg(s ORDER BY s.updated_at DESC)
-          FROM company_public_config_deployment_statuses s
-          WHERE s.company_public_config_id = conf.id
+) => {
+  const filterIds = filters[filter][env];
+  const whereClause =
+    filterIds.length > 0
+      ? `WHERE c.id = ANY(ARRAY[${filterIds.join(',')}])`
+      : 'WHERE 1=1';
+
+  return `
+    SELECT
+      c.*,
+      json_agg(
+        json_build_object(
+          'id', conf.id,
+          'build_config', conf.build_config,
+          'ui_config', conf.ui_config,
+          'knowledge_id', conf.knowledge_id,
+          'embedded_access_key', conf.embedded_access_key,
+          'hostnames', (
+            SELECT json_agg(h)
+            FROM company_public_config_hostnames h
+            WHERE h.company_public_config_id = conf.id
+          ),
+          'deployment_statuses', (
+            SELECT json_agg(s ORDER BY s.updated_at DESC)
+            FROM company_public_config_deployment_statuses s
+            WHERE s.company_public_config_id = conf.id
+          )
         )
-      )
-    ) AS public_configs
-  FROM companies c
-  LEFT JOIN company_public_configs conf ON c.id = conf.company_id
-  WHERE c.id = ANY(ARRAY[${filters[filter][env].join(',')}])
-    AND conf.id IS NOT NULL AND conf.knowledge_id != ''
-    AND ( 
-      SELECT COUNT(*)
-      FROM company_public_config_hostnames h
-      WHERE h.company_public_config_id = conf.id
-    ) > 0
-  GROUP BY c.id
-`;
+      ) AS public_configs
+    FROM companies c
+    LEFT JOIN company_public_configs conf ON c.id = conf.company_id
+    ${whereClause}
+      AND conf.id IS NOT NULL AND conf.knowledge_id != ''
+      AND ( 
+        SELECT COUNT(*)
+        FROM company_public_config_hostnames h
+        WHERE h.company_public_config_id = conf.id
+      ) > 0
+    GROUP BY c.id
+  `;
+};
 
 export const forceReleased = (companyPublicConfigId: number) => `
     UPDATE company_public_config_deployment_statuses

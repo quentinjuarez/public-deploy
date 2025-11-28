@@ -4,10 +4,17 @@
       <div class="flex justify-between items-center mb-4">
         <h1 class="text-3xl font-bold">Dashboard</h1>
         <div class="flex items-center gap-2">
-          <div class="text-sm text-gray-600">
-            Environment:
-            <span class="font-semibold text-blue-600">{{ activeEnv }}</span>
-          </div>
+          <!-- FILTERS -->
+          <select
+            v-model="activeFilter"
+            class="border border-gray-300 rounded px-2 py-1"
+            @change="fetchData"
+          >
+            <option value="client">Client</option>
+            <option value="demo">Demo</option>
+            <option value="all">All</option>
+          </select>
+
           <button
             class="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 disabled:opacity-50 text-sm"
             :disabled="loading"
@@ -79,7 +86,7 @@
         </div>
         <div v-else>
           <div class="bg-white p-4 rounded shadow mb-4">
-            <h2 class="text-xl font-semibold mb-2">PostgreSQL Data</h2>
+            <h2 class="text-xl font-semibold mb-2">Selfcares</h2>
             <div
               v-for="(item, index) in pgData"
               :key="index"
@@ -197,7 +204,9 @@
       @mousedown.self="showEditModal = false"
     >
       <div class="bg-white p-6 rounded shadow-lg w-1/2">
-        <h2 class="text-2xl font-bold mb-4">Edit Configuration</h2>
+        <h2 class="text-2xl font-bold mb-4">
+          Edit Configuration - {{ focusConfig.id }}
+        </h2>
 
         <textarea
           v-if="focusConfig"
@@ -233,6 +242,34 @@
         >
           Save
         </button>
+      </div>
+    </div>
+
+    <!-- Deploy All Modal -->
+    <div
+      v-if="showDeployAllModal"
+      class="fixed inset-0 bg-black/50 flex items-center justify-center"
+      @mousedown.self="showDeployAllModal = false"
+    >
+      <div class="bg-white p-6 rounded shadow-lg w-1/3">
+        <h2 class="text-2xl font-bold mb-4">Confirm Deploy All</h2>
+        <p class="mb-4">
+          Are you sure you want to deploy all configurations for all companies?
+        </p>
+        <div class="flex justify-end gap-2">
+          <button
+            class="bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400"
+            @click="showDeployAllModal = false"
+          >
+            Cancel
+          </button>
+          <button
+            class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+            @click="confirmDeployAll"
+          >
+            Confirm
+          </button>
+        </div>
       </div>
     </div>
 
@@ -277,7 +314,7 @@ const fetchData = async () => {
   pgData.value = null;
   try {
     const res = await fetch(
-      `${process.env.BACKEND_URL}/${activeEnv.value}/companies?filter=all`,
+      `${process.env.BACKEND_URL}/${activeEnv.value}/companies?filter=${activeFilter.value}`,
       { method: 'GET' }
     );
     pgData.value = await res.json();
@@ -342,7 +379,6 @@ const handleAction = (configId: number, action: string) => {
   const queue =
     action === 'full' ? 'selfcare-build' : 'selfcare-embedded-build';
   sendRabbitMQMessage(msg, queue);
-  toast.info(`Initiated ${action} deployment for config ${configId}`);
 };
 
 const forceReleased = async (companyPublicConfigId: number) => {
@@ -416,6 +452,8 @@ const handleSave = async () => {
   }
 };
 
+const activeFilter = ref<'client' | 'demo' | 'all'>('client');
+
 onMounted(() => {
   // Initialize environment from URL hash
   initializeEnv();
@@ -440,7 +478,13 @@ onMounted(() => {
   });
 });
 
+const showDeployAllModal = ref(false);
+
 const deployAll = async () => {
+  showDeployAllModal.value = true;
+};
+
+const confirmDeployAll = async () => {
   if (!pgData.value) return;
 
   const actions = ['full', 'embedded', 'widget', 'ask'];
