@@ -15,6 +15,13 @@
             <option value="all">All</option>
           </select>
 
+          <input
+            type="text"
+            v-model="searchQuery"
+            placeholder="Search..."
+            class="border border-gray-300 rounded px-2 py-1"
+          />
+
           <button
             class="bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600 disabled:opacity-50 text-sm"
             :disabled="loading"
@@ -88,7 +95,7 @@
           <div class="bg-white p-4 rounded shadow mb-4">
             <h2 class="text-xl font-semibold mb-2">Selfcares</h2>
             <div
-              v-for="(item, index) in pgData"
+              v-for="(item, index) in filteredData"
               :key="index"
               class="mb-2 w-full text-left"
             >
@@ -293,6 +300,34 @@ const activeEnv = ref<Env>('dev');
 const loading = ref(false);
 const pgData = ref<any | null>(null);
 const toast = useToast();
+const searchQuery = ref('');
+
+const filteredData = computed(() => {
+  if (!pgData.value || typeof pgData.value === 'string') {
+    return [];
+  }
+  if (!searchQuery.value) {
+    return pgData.value;
+  }
+
+  const lowerCaseQuery = searchQuery.value.toLowerCase();
+
+  return pgData.value.filter((company: any) => {
+    const matchesId = company.id
+      .toString()
+      .toLowerCase()
+      .includes(lowerCaseQuery);
+    const matchesName = company.name.toLowerCase().includes(lowerCaseQuery);
+
+    const matchesHostname = company.public_configs.some((config: any) =>
+      config.hostnames?.some((h: any) =>
+        h.hostname.toLowerCase().includes(lowerCaseQuery)
+      )
+    );
+
+    return matchesId || matchesName || matchesHostname;
+  });
+});
 
 // URL hash environment handling
 const getEnvFromHash = (): Env => {
